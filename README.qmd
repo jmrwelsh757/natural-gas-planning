@@ -5,23 +5,101 @@ format: gfm
 editor: visual
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
-```{r}
-1 + 1
+```{r setup, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+library(tidyverse)
+library(sf)
 ```
 
-You can add options to executable code like this
 
-```{r}
-#| echo: false
-2 * 2
+## Simulating data
+
+Your writer used R's inbuilt distribution functions to simulate random x and y coordinates for different meter points.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+
+bbox_coords = c(-94, 30, -71, 42)
+xmin = bbox_coords[1]
+ymin = bbox_coords[2]
+xmax = bbox_coords[3]
+ymax = bbox_coords[4]
+
+genPipelinePoints = 
+  function(name, 
+           x1, y1, x2, y2){
+    
+    xmin = x1
+    ymin = y1
+    xmax = x2
+    ymax = y2
+    
+    #generate 15 random x coordinates for lines
+    xcoords = runif(n = 25, 
+          min = xmin, max = xmax)
+    
+    #generate 15 random y coordinates for lines
+    ycoords = runif(n = 25, 
+          min = ymin, max = ymax)
+    
+    df = 
+      tibble(
+      Pipeline = name,
+      lon = sort(xcoords),
+      lat = sort(ycoords)
+    )
+    return(df)
+  }
+
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+set.seed(9999)
+
+piplines = 
+  tibble(
+  Name = c("Sphinx", "Griffin", "Manticor", "Pegasus"), 
+  xmin = rep(bbox_coords[1], times = 4),
+  ymin = rep(bbox_coords[2], times = 4),
+  xmax = rep(bbox_coords[3], times = 4),
+  ymax = rep(bbox_coords[4], times = 4)
+) %>% rowwise() %>% 
+  mutate(data = 
+           list(
+             genPipelinePoints(Name,
+                               x1 = xmin,
+                               y1 = ymin,
+                               x2 = xmax,
+                               y2 = ymax)
+             )) %>% 
+  select(data) %>% 
+  unnest(cols = data) %>% 
+  st_as_sf(coords = c('lon', 'lat'),
+           crs=2163)
+
+
+piplines %>% 
+  group_by(Pipeline) %>% 
+  summarise(geometry = st_combine(geometry)) %>%
+  st_cast("LINESTRING") %>% 
+  
+  ggplot() +
+  geom_sf(aes(color = Pipeline)) + 
+  geom_sf(data = piplines, 
+          aes(color = Pipeline)) +
+  ggtitle('Map of pipelines in the southeast') +
+  scale_x_continuous(labels = 
+                       scales::label_number(
+                         accuracy = .00001,
+                         suffix = '°W'
+                       )) +
+  scale_y_continuous(labels = 
+                       scales::label_number(
+                         accuracy = .00001,
+                         suffix = '°N'
+                       )) +
+  theme_minimal()
+
+```
+
+
+
