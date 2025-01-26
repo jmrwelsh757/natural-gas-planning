@@ -18,15 +18,11 @@ Your writer used R's inbuilt distribution functions to simulate random x and y c
 ```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
 
 bbox_coords = c(-94, 30, -71, 42)
-xmin = bbox_coords[1]
-ymin = bbox_coords[2]
-xmax = bbox_coords[3]
-ymax = bbox_coords[4]
 
 genPipelinePoints = 
   function(name, 
            x1, y1, x2, y2){
-    
+
     xmin = x1
     ymin = y1
     xmax = x2
@@ -54,10 +50,9 @@ genPipelinePoints =
 
 ```{r}
 set.seed(9999)
-
-piplines = 
+pipelines = 
   tibble(
-  Name = c("Sphinx", "Griffin", "Manticor", "Pegasus"), 
+  Name = c("Sphinx", "Griffin", "Manticore", "Pegasus"), 
   xmin = rep(bbox_coords[1], times = 4),
   ymin = rep(bbox_coords[2], times = 4),
   xmax = rep(bbox_coords[3], times = 4),
@@ -74,19 +69,42 @@ piplines =
   select(data) %>% 
   unnest(cols = data) %>% 
   st_as_sf(coords = c('lon', 'lat'),
-           crs=2163)
+           crs=4326)
+
+```
 
 
-piplines %>% 
+```{r}
+# create pipeline project that unifies 4 points
+crossing = 
+  pipelines %>% 
+  filter(Pipeline %in% c("Pegasus", "Griffin")) %>% 
+  group_by(Pipeline) %>% 
+  slice_head(n=nrow(.)%/%4) %>% 
+  slice_tail(n=1) %>% 
+  ungroup() 
+
+crossing_geom = 
+  crossing %>% 
+  summarize(geometry = st_combine(geometry)) %>% 
+  mutate(Pipeline = "Pipeline Crossing Project",
+         .before = geometry) %>% st_cast("LINESTRING")
+
+
+pipelines_geom = pipelines %>% 
   group_by(Pipeline) %>% 
   summarise(geometry = st_combine(geometry)) %>%
-  st_cast("LINESTRING") %>% 
+  st_cast("LINESTRING")
+
+ggplot() +
   
-  ggplot() +
-  geom_sf(aes(color = Pipeline)) + 
-  geom_sf(data = piplines, 
+  geom_sf(data = pipelines_geom,
           aes(color = Pipeline)) +
-  ggtitle('Map of pipelines in the southeast') +
+  geom_sf(data = pipelines, 
+          aes(color = Pipeline)) +
+  geom_sf(data = crossing_geom, linewidth=1.2,
+          aes(color = Pipeline)) +
+  ggtitle('Map of pipelines in the southeast of Mars') +
   scale_x_continuous(labels = 
                        scales::label_number(
                          accuracy = .00001,
@@ -98,6 +116,7 @@ piplines %>%
                          suffix = '°N'
                        )) +
   theme_minimal()
+
 
 ```
 
