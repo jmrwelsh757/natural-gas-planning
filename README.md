@@ -8,10 +8,9 @@ and y coordinates for different meter points.
 
 ``` r
 set.seed(9999)
-
-piplines = 
+pipelines = 
   tibble(
-  Name = c("Sphinx", "Griffin", "Manticor", "Pegasus"), 
+  Name = c("Sphinx", "Griffin", "Manticore", "Pegasus"), 
   xmin = rep(bbox_coords[1], times = 4),
   ymin = rep(bbox_coords[2], times = 4),
   xmax = rep(bbox_coords[3], times = 4),
@@ -28,25 +27,51 @@ piplines =
   select(data) %>% 
   unnest(cols = data) %>% 
   st_as_sf(coords = c('lon', 'lat'),
-           crs=2163)
+           crs=4326)
 ```
 
-    Warning in CPL_crs_from_input(x): GDAL Message 1: CRS EPSG:2163 is deprecated.
-    Its non-deprecated replacement EPSG:9311 will be used instead. To use the
-    original CRS, set the OSR_USE_NON_DEPRECATED configuration option to NO.
-
 ``` r
-piplines %>% 
+# create pipeline project that unifies 4 points
+crossing = 
+  pipelines %>% 
+  filter(Pipeline %in% c("Pegasus", "Griffin")) %>% 
+  group_by(Pipeline) %>% 
+  slice_head(n=nrow(.)%/%4) %>% 
+  slice_tail(n=1) %>% 
+  ungroup() 
+
+crossing_geom = 
+  crossing %>% 
+  summarize(geometry = st_combine(geometry)) %>% 
+  mutate(Pipeline = "Pipeline Crossing Project",
+         .before = geometry) %>% st_cast("LINESTRING")
+
+
+pipelines_geom = pipelines %>% 
   group_by(Pipeline) %>% 
   summarise(geometry = st_combine(geometry)) %>%
-  st_cast("LINESTRING") %>% 
+  st_cast("LINESTRING")
+
+ggplot() +
   
-  ggplot() +
-  geom_sf(aes(color = Pipeline)) + 
-  geom_sf(data = piplines, 
+  geom_sf(data = pipelines_geom,
           aes(color = Pipeline)) +
-  ggtitle('Map of pipelines in the southeast') +
+  geom_sf(data = pipelines, 
+          aes(color = Pipeline)) +
+  geom_sf(data = crossing_geom, linewidth=1.2,
+          aes(color = Pipeline)) +
+  ggtitle('Map of pipelines in the southeast of Mars') +
+  scale_x_continuous(labels = 
+                       scales::label_number(
+                         accuracy = .00001,
+                         suffix = '°W'
+                       )) +
+  scale_y_continuous(labels = 
+                       scales::label_number(
+                         accuracy = .00001,
+                         suffix = '°N'
+                       )) +
   theme_minimal()
 ```
 
-![](README_files/figure-commonmark/unnamed-chunk-2-1.png)
+![](README_files/figure-commonmark/unnamed-chunk-3-1.png)
