@@ -15,7 +15,7 @@ library(sf)
 
 Your writer used R's inbuilt distribution functions to simulate random x and y coordinates for different meter points.
 
-```{r, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+```{r funcdef, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
 
 bbox_coords = c(-94, 30, -71, 42)
 
@@ -39,16 +39,29 @@ genPipelinePoints =
     df = 
       tibble(
       Pipeline = name,
+      Meter = runif(n=25, 
+                    min = 11111111,
+                    max = 99999999),
       lon = sort(xcoords),
-      lat = sort(ycoords)
-    )
+      lat = sort(ycoords),
+      supply = pmax(
+        rnorm(n = 25, 
+              mean = 100000, 
+              sd = 50000),
+        0),
+      demand = pmax(
+        rnorm(n = 25,
+               mean = 200000,
+               sd = 200000)
+        ,0)
+      )
     return(df)
   }
 
 ```
 
 
-```{r}
+```{r pipelines, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
 set.seed(9999)
 pipelines = 
   tibble(
@@ -68,21 +81,24 @@ pipelines =
              )) %>% 
   select(data) %>% 
   unnest(cols = data) %>% 
+  mutate(ft1 = abs(-80 - lon),
+         ft2 = abs(32 - lat),
+         ra = lat) %>% 
   st_as_sf(coords = c('lon', 'lat'),
            crs=4326)
 
 ```
 
 
-```{r}
+```{r crossing, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
 # create pipeline project that unifies 4 points
 crossing = 
   pipelines %>% 
-  filter(Pipeline %in% c("Pegasus", "Griffin")) %>% 
   group_by(Pipeline) %>% 
-  slice_head(n=nrow(.)%/%4) %>% 
-  slice_tail(n=1) %>% 
-  ungroup() 
+  slice_min(order_by=ft1,
+            n=1) %>% 
+  ungroup() %>% 
+  arrange(ra)
 
 crossing_geom = 
   crossing %>% 
@@ -121,4 +137,13 @@ ggplot() +
 ```
 
 
+```{r alternatives, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+
+crossing_length = 
+  crossing_geom %>% st_length() # meters
+
+crossing_cost = as.numeric(crossing_length) * 2000
+
+crossing_cost %>% scales::dollar()
+```
 
