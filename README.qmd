@@ -38,22 +38,20 @@ genPipelinePoints =
     
     df = 
       tibble(
-      Pipeline = name,
-      Meter = runif(n=25, 
-                    min = 11111111,
-                    max = 99999999),
-      lon = sort(xcoords),
-      lat = sort(ycoords),
-      supply = pmax(
-        rnorm(n = 25, 
-              mean = 100000, 
-              sd = 50000),
-        0),
-      demand = pmax(
-        rnorm(n = 25,
-               mean = 200000,
-               sd = 200000)
-        ,0)
+        Pipeline = name,
+        Meter = paste0(name, 1:25),
+        lon = sort(xcoords),
+        lat = sort(ycoords),
+        supply = sample(c(0,20000, 50000), 
+                        size = 25,
+                        replace = T, 
+                        prob = c(0.5,0.3,0.2)),
+        demand = sample(c(0,20000, 100000), 
+                        size = 25, 
+                        replace = T, 
+                        prob = c(0.6,0.3,0.1)),
+        constraint = 80000,
+        cost = rnorm(25, mean = 3, sd = 1)
       )
     return(df)
   }
@@ -83,7 +81,8 @@ pipelines =
   unnest(cols = data) %>% 
   mutate(ft1 = abs(-80 - lon),
          ft2 = abs(32 - lat),
-         ra = lat) %>% 
+         lat2 = lat,
+         lon2 = lon) %>% 
   st_as_sf(coords = c('lon', 'lat'),
            crs=4326)
 
@@ -98,12 +97,13 @@ crossing =
   slice_min(order_by=ft1,
             n=1) %>% 
   ungroup() %>% 
-  arrange(ra)
+  mutate(Pipeline = "Crossing") %>% 
+  arrange(lat2)
 
 crossing_geom = 
   crossing %>% 
   summarize(geometry = st_combine(geometry)) %>% 
-  mutate(Pipeline = "Pipeline Crossing Project",
+  mutate(Pipeline = "Crossing Project",
          .before = geometry) %>% st_cast("LINESTRING")
 
 
@@ -123,12 +123,12 @@ ggplot() +
   ggtitle('Map of pipelines in the southeast of Mars') +
   scale_x_continuous(labels = 
                        scales::label_number(
-                         accuracy = .00001,
+                         accuracy = 1,
                          suffix = '°W'
                        )) +
   scale_y_continuous(labels = 
                        scales::label_number(
-                         accuracy = .00001,
+                         accuracy = 1,
                          suffix = '°N'
                        )) +
   theme_minimal()
@@ -146,4 +146,95 @@ crossing_cost = as.numeric(crossing_length) * 2000
 
 crossing_cost %>% scales::dollar()
 ```
+
+```{r crossing_network, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+network = 
+  pipelines %>%
+  bind_rows(crossing) %>%
+  group_by(Pipeline) %>%
+  mutate(From = Meter,
+         To = lead(Meter),
+         .before = Pipeline) %>%
+  filter(!is.na(To))
+
+crossingnetwork_c =  
+  network %>% 
+  select(From, To, constraint) %>%
+  sf::st_drop_geometry() %>%
+  pivot_wider(names_from = To,
+              values_from = constraint) %>%
+  mutate(
+    across(everything(), ~replace_na(.x, 0))
+  ) %>% 
+  column_to_rownames(var = "From")
+
+```
+
+
+```{r network, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+
+network_c = 
+  network %>%
+  select(From, To, constraint) %>%
+  sf::st_drop_geometry() %>%
+  pivot_wider(names_from = To,
+              values_from = constraint) %>%
+  mutate(
+    across(everything(), ~replace_na(.x, 0))
+  ) %>% 
+  column_to_rownames(var = "From")
+
+```
+
+```{r supply_demand, echo=FALSE, warning=FALSE, error=FALSE,message=FALSE}
+
+supply_c = 
+  network %>% 
+  select(From, supply) %>% st_drop_geometry() %>% 
+  distinct(From, .keep_all = TRUE)
+
+demand_c = 
+  network %>% 
+  select(To, demand) %>% st_drop_geometry() %>% 
+  distinct(To, .keep_all = TRUE)
+
+cost_c = 
+  network %>% 
+  select(From, To, cost) %>%
+  sf::st_drop_geometry() %>%
+  pivot_wider(names_from = To,
+              values_from = cost) %>%
+  mutate(
+    across(everything(), ~replace_na(.x, 0))
+  ) %>% 
+  column_to_rownames(var = "From")
+```
+
+
+```{r}
+library(ompr)
+
+# network
+
+# n_from = nrow(network_c)
+# n_to = ncol(network_c)
+# 
+# MILPModel() %>% 
+#   add_variable(flow[i,j], type = 'continuous', lb = 0,
+#                i = 1:n_from, j = 1:n_to) %>% 
+#   add_constraint(flow[i,j] <= network_c[i,j], 
+#                  i = 1:n_from, j = 1:n_to) %>% 
+#   add_constraint(sum_over(flow[i,j], j = 1:n_to) <= supply_c[i,2], 
+#                  i = 1:n_from) %>% 
+#   add_constraint(sum_over(flow[i,j], i = 1:n_from) == demand_c[j,2],
+#                  j = 1:n_to) %>% 
+#   set_objective(sum_over(flow[i,j] * cost_c[i,j], 
+#                          j = 1:n_to, 
+#                          i = 1:n_from),
+#                 sense = 'min')
+
+
+
+```
+
 
